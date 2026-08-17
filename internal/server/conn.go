@@ -19,7 +19,7 @@ import (
 // TODO: dispatch to the sharded store based on op
 // TODO: remove inline processing and submit to worker pool
 func (s *Server) handleConn(conn net.Conn) {
-	defer conn.Close()
+	defer func () {_ = conn.Close() }()
 	header := make([]byte, protocol.HeaderSize)
 	for {
 		_, err := io.ReadFull(conn, header)
@@ -44,7 +44,10 @@ func (s *Server) handleConn(conn net.Conn) {
 		frame.DecodePayload(payload, keyLen, valLen)
 
 		response := &protocol.Frame{Op: protocol.OpOK}
-		sendResponse(conn, response)
+		err = sendResponse(conn, response)
+		if err != nil {
+			return
+		}
 	}
 }
 
@@ -53,8 +56,12 @@ func (s *Server) handleConn(conn net.Conn) {
 func sendResponse(conn net.Conn, response *protocol.Frame) error {
 	size := response.EncodedLen()
 	buf := make([]byte, size)
-	response.Encode(buf)
-	_,err := conn.Write(buf)
+	_,err := response.Encode(buf)
+	if err != nil {
+		log.Printf("failed to encode: %v", err)
+		return err
+	}
+	_,err = conn.Write(buf)
 	if err != nil {
 		return err
 	}
