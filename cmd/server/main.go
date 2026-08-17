@@ -1,4 +1,4 @@
-package server
+package main
 
 import (
 		"log"
@@ -11,6 +11,11 @@ const defaultAddr = ":9000"
 
 // Main entry point 
 func main() {
-	// TODO: startup msg log, create and start server, catch any errors, signal handling for graceful shutdown
-	panic("yet to be implemented")
+	// TODO: signal handling for graceful shutdown
+	log.Printf("starting server on %s", defaultAddr)
+	srv := server.New(defaultAddr)
+	err := srv.Start()
+	if err != nil {
+		log.Fatal(err)
+	}
 }
