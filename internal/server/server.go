@@ -2,21 +2,29 @@
 // Entry point for network traffic, listening on TCP port and creates goroutine per connection
 package server
 
-import(
+import (
 	"net"
+	"shard_cache/internal/metrics"
+	"shard_cache/internal/store"
 )
 
 // Server manages the TCP listener and connection lifecycle
-// TODO: references to sharded KV store, atomic metrics, worker pool
+// TODO: references to worker pool
 type Server struct {
-	addr      string
+	addr     string
 	listener net.Listener
+	store    *store.Store
+	metrics  *metrics.Metrics
 }
 
 // New creates a new Server that listens to the given address
 // Constructor encapsulates initialisation; callers do not need to know which fields exist
-func New(addr string) *Server {
-	return &Server{addr: addr}
+func New(addr string, st *store.Store, m *metrics.Metrics) *Server {
+	return &Server{
+		addr:    addr,
+		store:   st,
+		metrics: m,
+	}
 }
 
 // Start begins listening for TCP connections
@@ -24,14 +32,14 @@ func New(addr string) *Server {
 // TODO: graceful shutdown, worker pool for backpressure
 func (s *Server) Start() error {
 	ln, err := net.Listen("tcp", s.addr)
-	if err != nil{
+	if err != nil {
 		return err
 	}
 	s.listener = ln
-	
+
 	for {
 		conn, err := s.listener.Accept()
-		if err != nil{
+		if err != nil {
 			return err
 		}
 		go s.handleConn(conn)

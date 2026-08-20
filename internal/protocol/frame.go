@@ -8,13 +8,13 @@ import (
 // Common errors returned by frame operations
 // Callers can check error identity with errors.Is(), avoids string matching ("if err.Error() == ...")
 var (
-	ErrInvalidStartByte   = errors.New("invalid start byte")
-	ErrBufferTooSmall = errors.New("buffer too small for frame")
+	ErrInvalidStartByte = errors.New("invalid start byte")
+	ErrBufferTooSmall   = errors.New("buffer too small for frame")
 )
 
 // Frame represents a single protocol message
 type Frame struct {
-	Op    byte   // operation code 
+	Op    byte   // operation code
 	Key   []byte // key bytes (empty for responses like OpOK)
 	Value []byte // value bytes (empty for GET requests, OpOK responses)
 }
@@ -27,10 +27,10 @@ func (f *Frame) EncodedLen() int {
 
 // Encode writes the frame into buf and returns the number of bytes written
 // buf is provided here to support future zero allocation pattern
-// 
-// RETURNS: 
+//
+// RETURNS:
 // - No. of bytes written
-// - Error if buf is too small 
+// - Error if buf is too small
 func (f *Frame) Encode(buf []byte) (int, error) {
 	// Check if buf is large enough
 	if len(buf) < f.EncodedLen() {
@@ -57,7 +57,7 @@ func DecodeHeader(buf []byte) (op byte, keyLen uint16, valLen uint32, err error)
 	if len(buf) < HeaderSize {
 		return 0, 0, 0, ErrBufferTooSmall
 	}
-	if buf[0] != StartByte { 
+	if buf[0] != StartByte {
 		return 0, 0, 0, ErrInvalidStartByte
 	}
 	op = buf[1]

@@ -1,8 +1,8 @@
 package server
 
 import (
-	"log"
 	"io"
+	"log"
 	"net"
 
 	"shard_cache/internal/protocol"
@@ -16,10 +16,9 @@ import (
 //  2. Parse header to learn payload size
 //  3. Read exactly that many bytes using io.ReadFull
 
-// TODO: dispatch to the sharded store based on op
 // TODO: remove inline processing and submit to worker pool
 func (s *Server) handleConn(conn net.Conn) {
-	defer func () {_ = conn.Close() }()
+	defer func() { _ = conn.Close() }()
 	header := make([]byte, protocol.HeaderSize)
 	for {
 		_, err := io.ReadFull(conn, header)
@@ -35,19 +34,41 @@ func (s *Server) handleConn(conn net.Conn) {
 		var payload []byte
 		if payloadSize > 0 {
 			payload = make([]byte, payloadSize)
-			_,err = io.ReadFull(conn, payload)
+			_, err = io.ReadFull(conn, payload)
 			if err != nil {
 				return
 			}
 		}
+		s.metrics.RecordBytesIn(int64(payloadSize))
 		frame := &protocol.Frame{Op: op}
 		frame.DecodePayload(payload, keyLen, valLen)
-
-		response := &protocol.Frame{Op: protocol.OpOK}
+		var response *protocol.Frame
+		switch op {
+		case protocol.OpGet:
+			val, found := s.store.Get(string(frame.Key))
+			if found {
+				s.metrics.RecordHit()
+				response = &protocol.Frame{Op: protocol.OpValue, Value: val}
+			} else {
+				s.metrics.RecordMiss()
+				response = &protocol.Frame{Op: protocol.OpNotFound}
+			}
+		case protocol.OpSet:
+			s.store.Set(string(frame.Key), frame.Value)
+			s.metrics.RecordSet()
+			response = &protocol.Frame{Op: protocol.OpOK}
+		case protocol.OpDelete:
+			s.store.Delete(string(frame.Key))
+			s.metrics.RecordDelete()
+			response = &protocol.Frame{Op: protocol.OpOK}
+		default:
+			response = &protocol.Frame{Op: protocol.OpError}
+		}
 		err = sendResponse(conn, response)
 		if err != nil {
 			return
 		}
+		s.metrics.RecordBytesOut(int64(len(response.Value)))
 	}
 }
 
@@ -56,12 +77,12 @@ func (s *Server) handleConn(conn net.Conn) {
 func sendResponse(conn net.Conn, response *protocol.Frame) error {
 	size := response.EncodedLen()
 	buf := make([]byte, size)
-	_,err := response.Encode(buf)
+	_, err := response.Encode(buf)
 	if err != nil {
 		log.Printf("failed to encode: %v", err)
 		return err
 	}
-	_,err = conn.Write(buf)
+	_, err = conn.Write(buf)
 	if err != nil {
 		return err
 	}

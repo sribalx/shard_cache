@@ -7,7 +7,7 @@ package protocol
 // 0xCA is arbitrary.
 const StartByte byte = 0xCA
 
-// Request opcodes are what the client wants to do. 
+// Request opcodes are what the client wants to do.
 // Single byte suffices for our use case.
 const (
 	OpGet    byte = iota + 1 // 0x01 retrieve value for key
@@ -18,9 +18,10 @@ const (
 // Response opcodes are what the server will send back.
 // start at 0x80 to have a clear split between request and response.
 const (
-	OpOK    byte = 0x80 // operation success, no return value
-	OpError byte = 0x81 // operation failed, returning error code
-	OpValue byte = 0x82 // returning value (response to a get call)
+	OpOK       byte = 0x80 // operation success, no return value
+	OpError    byte = 0x81 // operation failed, returning error code
+	OpValue    byte = 0x82 // returning value as a response to a get call
+	OpNotFound byte = 0x83 // cache miss
 )
 
 // HeaderSize is fixed byte size of every frame's header.
