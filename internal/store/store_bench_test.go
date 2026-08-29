@@ -27,14 +27,14 @@ func BenchmarkBaselineStore_Concurrent(b *testing.B) {
 	s := NewBaseline()
 
 	// Pre-populate with data so Gets can hit
-	for i := 0; i < 1000; i++ {
-		s.Set(fmt.Sprintf("key-%d", i), []byte("value"))
+	for _, k := range benchKeys {
+		s.Set(k, []byte("value"))
 	}
 
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {   // pb.Next() returns false when this goroutine's share of b.N is done
-			key := fmt.Sprintf("key-%d", i%1000)
+			key := benchKeys[i%1000]
 
 			if i%10 == 0 {
 				s.Set(key, []byte("value"))
@@ -51,14 +51,14 @@ func BenchmarkShardedStore_Concurrent(b *testing.B) {
 	s := New()
 
 	// Pre-populate — same as baseline for fair comparison
-	for i := 0; i < 1000; i++ {
-		s.Set(fmt.Sprintf("key-%d", i), []byte("value"))
+	for _, k := range benchKeys {
+		s.Set(k, []byte("value"))
 	}
 
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
-			key := fmt.Sprintf("key-%d", i%1000)
+			key := benchKeys[i%1000]
 
 			if i%10 == 0 {
 				s.Set(key, []byte("value"))
@@ -81,8 +81,8 @@ func BenchmarkComparison(b *testing.B) {
 			s := NewBaseline()
 
 			// Pre-populate
-			for i := 0; i < 1000; i++ {
-				s.Set(fmt.Sprintf("key-%d", i), []byte("value"))
+			for _, k := range benchKeys {
+				s.Set(k, []byte("value"))
 			}
 
 			var wg sync.WaitGroup // coordinate the different groups
@@ -98,7 +98,7 @@ func BenchmarkComparison(b *testing.B) {
 				go func(id int) {
 					defer wg.Done()
 					for j := 0; j < opsPerGoroutine; j++ {
-						key := fmt.Sprintf("key-%d", j%1000)
+						key := benchKeys[j%1000]
 						if j%10 == 0 {
 							s.Set(key, []byte("value"))
 						} else {
@@ -115,8 +115,8 @@ func BenchmarkComparison(b *testing.B) {
 			s := New()
 
 			// Pre-populate
-			for i := 0; i < 1000; i++ {
-				s.Set(fmt.Sprintf("key-%d", i), []byte("value"))
+			for _, k := range benchKeys {
+				s.Set(k, []byte("value"))
 			}
 
 			var wg sync.WaitGroup
@@ -132,7 +132,7 @@ func BenchmarkComparison(b *testing.B) {
 				go func(id int) {
 					defer wg.Done()
 					for j := 0; j < opsPerGoroutine; j++ {
-						key := fmt.Sprintf("key-%d", j%1000)
+						key := benchKeys[j%1000]
 						if j%10 == 0 {
 							s.Set(key, []byte("value"))
 						} else {
@@ -148,3 +148,12 @@ func BenchmarkComparison(b *testing.B) {
 
 // Helper, suppress unused import warning
 var _ = sync.WaitGroup{}
+
+// Helper, pre-computed keys to avoid fmt.Sprintf overhead in hot path
+var benchKeys = func() []string {
+	keys := make([]string, 1000)
+	for i := 0; i < 1000; i++ {
+		keys[i] = fmt.Sprintf("key-%d", i)
+	}
+	return keys
+}()
