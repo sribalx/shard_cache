@@ -6,6 +6,7 @@ import (
 	"net"
 
 	"shard_cache/internal/protocol"
+	"shard_cache/internal/pool"
 )
 
 // handleConn reads frames from a TCP connection and processes them
@@ -15,10 +16,13 @@ import (
 //  1. Read exactly 8 bytes (header)
 //  2. Parse header to learn payload size
 //  3. Read exactly that many bytes using io.ReadFull
-
-// TODO: remove inline processing and submit to worker pool
+// 
+// Note: we only pool the header, because if we pool the buffer and return it before the worker
+// processes, the frame data becomes garbage
 func (s *Server) handleConn(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
+	buf := pool.GetBuffer()
+	defer pool.PutBuffer(buf)
 	header := make([]byte, protocol.HeaderSize)
 	for {
 		_, err := io.ReadFull(conn, header)
@@ -42,33 +46,10 @@ func (s *Server) handleConn(conn net.Conn) {
 		s.metrics.RecordBytesIn(int64(payloadSize))
 		frame := &protocol.Frame{Op: op}
 		frame.DecodePayload(payload, keyLen, valLen)
-		var response *protocol.Frame
-		switch op {
-		case protocol.OpGet:
-			val, found := s.store.Get(string(frame.Key))
-			if found {
-				s.metrics.RecordHit()
-				response = &protocol.Frame{Op: protocol.OpValue, Value: val}
-			} else {
-				s.metrics.RecordMiss()
-				response = &protocol.Frame{Op: protocol.OpNotFound}
-			}
-		case protocol.OpSet:
-			s.store.Set(string(frame.Key), frame.Value)
-			s.metrics.RecordSet()
-			response = &protocol.Frame{Op: protocol.OpOK}
-		case protocol.OpDelete:
-			s.store.Delete(string(frame.Key))
-			s.metrics.RecordDelete()
-			response = &protocol.Frame{Op: protocol.OpOK}
-		default:
-			response = &protocol.Frame{Op: protocol.OpError}
+		if !s.workers.Submit(Job{Conn: conn, Frame: frame}) {
+			continue
 		}
-		err = sendResponse(conn, response)
-		if err != nil {
-			return
-		}
-		s.metrics.RecordBytesOut(int64(len(response.Value)))
+		
 	}
 }
 
