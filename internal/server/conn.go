@@ -45,11 +45,14 @@ func (s *Server) handleConn(conn net.Conn) {
 		}
 		s.metrics.RecordBytesIn(int64(payloadSize))
 		frame := &protocol.Frame{Op: op}
-		frame.DecodePayload(payload, keyLen, valLen)
+		err = frame.DecodePayload(payload, keyLen, valLen)
+		if err != nil {
+			log.Printf("invalid payload: %v", err)
+      		return
+		}
 		if !s.workers.Submit(Job{Conn: conn, Frame: frame}) {
 			continue
 		}
-		
 	}
 }
 

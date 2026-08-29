@@ -10,6 +10,7 @@ import (
 var (
 	ErrInvalidStartByte = errors.New("invalid start byte")
 	ErrBufferTooSmall   = errors.New("buffer too small for frame")
+	ErrPayloadTooSmall  = errors.New("payload smaller than keyLen + valLen")
 )
 
 // Frame represents a single protocol message
@@ -67,9 +68,13 @@ func DecodeHeader(buf []byte) (op byte, keyLen uint16, valLen uint32, err error)
 }
 
 // DecodePayload extracts Key and Value from payload buffer into the Frame
-// Note: zero-copy, and only point is assigned. Need to be careful when reusing payload
-// No error because caller would ensure the payload is the correct size
-func (f *Frame) DecodePayload(payload []byte, keyLen uint16, valLen uint32) {
+// Note: zero-copy, slices point into payload. Be careful when reusing payload buffer.
+func (f *Frame) DecodePayload(payload []byte, keyLen uint16, valLen uint32) error {
+  	required := int(keyLen) + int(valLen)
+	if len(payload) < required {
+		return ErrPayloadTooSmall
+	}
 	f.Key = payload[0:keyLen]
 	f.Value = payload[keyLen : uint32(keyLen)+valLen]
+	return nil
 }

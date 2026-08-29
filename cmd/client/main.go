@@ -92,7 +92,10 @@ func sendRequest(frame *protocol.Frame) (*protocol.Frame, error) {
 	}
 
 	response := &protocol.Frame{Op:op}
-	response.DecodePayload(payload, keyLen, valLen)
+	err = response.DecodePayload(payload, keyLen, valLen)
+	if err != nil {
+		return nil, err
+	}
 	return response, nil
 }
 

@@ -34,7 +34,10 @@ func TestFrameRoundTrip(t *testing.T) {
 	payload := buf[HeaderSize:]
 	var decoded Frame
 	decoded.Op = op
-	decoded.DecodePayload(payload, keyLen, valLen)
+	err = decoded.DecodePayload(payload, keyLen, valLen)
+	if err != nil {
+		t.Fatalf("DecodePayload failed: %v", err)
+	}
 
 	// Verify
 	if decoded.Op != original.Op {
@@ -114,7 +117,10 @@ func TestEmptyKeyAndValue(t *testing.T) {
 
 	var decoded Frame
 	decoded.Op = op
-	decoded.DecodePayload(buf[HeaderSize:], keyLen, valLen)
+	err = decoded.DecodePayload(buf[HeaderSize:], keyLen, valLen)
+	if err != nil {
+		t.Fatalf("DecodePayload failed: %v", err)
+	}
 
 	// Verify
 	if decoded.Op != original.Op {
