@@ -126,27 +126,71 @@ Response opcodes: OK (0x80), ERROR (0x81), VALUE (0x82), NOT_FOUND (0x83)
 
 ## Benchmark Results
 
-Compared a single-mutex baseline against the 64-shard implementation:
+### 1. Local Benchmark (4 Cores)
 
+On 4 physical execution units, a 64-shard store can only experience parallel contention across at most 4 shards at any given microsecond. The remaining 60 shards remain uncontended (aka just chilling). This bounds how much we can speed this up.
+
+```text
+BenchmarkComparison/Baseline/goroutines-1-4      21.19 ns/op
+BenchmarkComparison/Sharded/goroutines-1-4       28.61 ns/op    (0.74x, hash/indexing overhead)
+
+BenchmarkComparison/Baseline/goroutines-10-4    126.30 ns/op
+BenchmarkComparison/Sharded/goroutines-10-4      20.43 ns/op    ~6.2x faster
+
+BenchmarkComparison/Baseline/goroutines-64-4    137.50 ns/op
+BenchmarkComparison/Sharded/goroutines-64-4      19.10 ns/op    ~7.2x faster (Local Peak)
+
+BenchmarkComparison/Baseline/goroutines-128-4   131.00 ns/op
+BenchmarkComparison/Sharded/goroutines-128-4      19.04 ns/op    ~6.9x faster
+
+BenchmarkComparison/Baseline/goroutines-1000-4  132.70 ns/op
+BenchmarkComparison/Sharded/goroutines-1000-4    23.06 ns/op    ~5.8x faster
 ```
-BenchmarkComparison/Baseline/goroutines-1       27.48 ns/op
-BenchmarkComparison/Sharded/goroutines-1        39.03 ns/op   (sharding overhead)
 
-BenchmarkComparison/Baseline/goroutines-100     129.7 ns/op
-BenchmarkComparison/Sharded/goroutines-100      31.12 ns/op   ~4x faster
+**Local Ceiling:** Throughput tops out at **~7.2x** speedup. The baseline stabilises around ~130 ns/op, constrained by 4-thread core contention.
 
-BenchmarkComparison/Baseline/goroutines-1000    160.8 ns/op
-BenchmarkComparison/Sharded/goroutines-1000     32.18 ns/op   ~5x faster
+---
 
-BenchmarkComparison/Baseline/goroutines-10000   149.5 ns/op
-BenchmarkComparison/Sharded/goroutines-10000    31.11 ns/op   ~5x faster
+### 2. Cloud Scale-Out Benchmark (AWS Graviton ARM64, 64 Physical Cores)
+
+Deployed to an AWS EC2 instance (64 dedicated physical vCPUs, unified on-die mesh interconnect) to evaluate whether sharded throughput scales linearly when physical core count matches shard count.
+
+```text
+BenchmarkComparison/Baseline/goroutines-1-64     56.33 ns/op
+BenchmarkComparison/Sharded/goroutines-1-64      69.56 ns/op    (0.81x, hash/indexing overhead)
+
+BenchmarkComparison/Baseline/goroutines-10-64   294.90 ns/op
+BenchmarkComparison/Sharded/goroutines-10-64     28.16 ns/op    ~10.5x faster
+
+BenchmarkComparison/Baseline/goroutines-64-64   326.40 ns/op
+BenchmarkComparison/Sharded/goroutines-64-64     20.54 ns/op    ~15.9x faster
+
+BenchmarkComparison/Baseline/goroutines-128-64  353.10 ns/op
+BenchmarkComparison/Sharded/goroutines-128-64    20.87 ns/op    ~16.9x faster (Cloud Peak: ~17x)
+
+BenchmarkComparison/Baseline/goroutines-1000-64 342.70 ns/op
+BenchmarkComparison/Sharded/goroutines-1000-64   24.37 ns/op    ~14.1x faster
 ```
 
-**Result: ~5x throughput improvement under contention.**
+---
 
-The improvement plateaus at 5x because I'm running on 8 cores. Even with 64 shards, only 8 goroutines are truly running at once — so at most 8 shards are being contended simultaneously. The other 56 shards are just chilling.
+### 3. Scaling Comparison: 4 Cores vs. 64 Cores
 
-**TODO:** Deploy to a larger EC2 instance (32+ cores) to test whether the improvement scales further. Hypothesis: with more cores, more shards see real contention, and the gap should widen.
+| Goroutines | 4 Cores: Baseline | 4 Cores: Sharded | 4-Core Speedup | 64 Cores: Baseline | 64 Cores: Sharded | 64-Core Speedup |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **1** | 21.19 ns/op | 28.61 ns/op | 0.74x | 56.33 ns/op | 69.56 ns/op | 0.81x |
+| **10** | 126.30 ns/op | 20.43 ns/op | **6.18x** | 294.90 ns/op | 28.16 ns/op | **10.47x** |
+| **64** | 137.50 ns/op | 19.10 ns/op | **7.20x** | 326.40 ns/op | 20.54 ns/op | **15.89x** |
+| **128** | 131.00 ns/op | 19.04 ns/op | **6.88x** | 353.10 ns/op | 20.87 ns/op | **16.92x** |
+| **1,000** | 132.70 ns/op | 23.06 ns/op | **5.75x** | 342.70 ns/op | 24.37 ns/op | **14.06x** |
+
+---
+
+### Some Architectural Takeaways
+
+1. **Lock Contention Scales with Physical Bus Width:** On 4 cores, single-mutex baseline latency degrades to **~130 ns/op**. On 64 cores, the cache-invalidation traffic across the mech interconnect forces baseline latency up to **~353 ns/op**, a ~2.7x penalty on the mutex serial path alone.
+2. **Horizontal Saturation Validates Sharding:** Despite Graviton's individual cores having ~2.4x slower single-thread execution latency than the Apple M1 Pro (69.56 ns vs 28.61 ns on 1 goroutine), 64 independent shards absorbed 64 concurrent hardware writers down to ~20 ns/op. Distributing lock contention across 64 partitions widened the relative speedup over the single-mutex baseline from 7.2x (local) to 16.9x (cloud).
+3. **Cache Line False Sharing Prevention:** I incorporated a `[128]byte` padding buffer for each `shard` struct. This ensures adjacent shard mutexes do not reside on the same 64-byte/128-byte cache line granule, preventing cross-core invalidation storms between concurrent writer goroutines. Learnt this after realising my tests were a bottlenecked.
 
 ---
 
