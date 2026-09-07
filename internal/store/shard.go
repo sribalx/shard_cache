@@ -10,6 +10,7 @@ import (
 type shard struct {
 	mu   sync.RWMutex
 	data map[string][]byte
+	_    [128]byte // Manual pad, pushes struct size to over 64 bytes
 }
 
 // newShard returns an initialised shard with empty map (cannot be nil map)
