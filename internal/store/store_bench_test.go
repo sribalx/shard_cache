@@ -73,77 +73,98 @@ func BenchmarkShardedStore_Concurrent(b *testing.B) {
 // BenchmarkComparison runs both stores at various concurrency levels
 //
 // Shows how performance scales with goroutine count
+
 func BenchmarkComparison(b *testing.B) {
-	concurrencyLevels := []int{1, 10, 100, 1000, 10000}
+    concurrencyLevels := []int{1, 10, 64, 128, 1000}
 
-	for _, n := range concurrencyLevels {
-		b.Run(fmt.Sprintf("Baseline/goroutines-%d", n), func(b *testing.B) {
-			s := NewBaseline()
-
+    for _, n := range concurrencyLevels {
+        b.Run(fmt.Sprintf("Baseline/goroutines-%d", n), func(b *testing.B) {
+            s := NewBaseline()
 			// Pre-populate
-			for _, k := range benchKeys {
-				s.Set(k, []byte("value"))
-			}
+            for _, k := range benchKeys {
+                s.Set(k, []byte("value"))
+            }
 
-			var wg sync.WaitGroup // coordinate the different groups
+            var start sync.WaitGroup
+            var done sync.WaitGroup
+            start.Add(1)
 
-			opsPerGoroutine := b.N / n
-			if opsPerGoroutine < 1 {
-				opsPerGoroutine = 1
-			}
-			b.ResetTimer()
+            // Distribute b.N iterations evenly across n workers
+            for i := 0; i < n; i++ {
+                done.Add(1)
+                go func(workerID int) {
+                    defer done.Done()
+                    start.Wait() // wait until all goroutines are spawned
 
-			for i := 0; i < n; i++ {
-				wg.Add(1)
-				go func(id int) {
-					defer wg.Done()
-					for j := 0; j < opsPerGoroutine; j++ {
+                    startIdx := workerID * b.N / n
+                    endIdx := (workerID + 1) * b.N / n
+					// 90% reads
+					for j := startIdx; j < endIdx; j++ {
+                        key := benchKeys[j%1000]
+                        if j%10 == 0 {
+                            s.Set(key, []byte("value"))
+                        } else {
+                            s.Get(key)
+                        }
+                    }
+					/*
+					// 100% writes
+					for j := startIdx; j < endIdx; j++ {
 						key := benchKeys[j%1000]
-						if j%10 == 0 {
-							s.Set(key, []byte("value"))
-						} else {
-							s.Get(key)
-						}
+						s.Set(key, []byte("value")) // 100% writes
 					}
-				}(i)
-			}
-			wg.Wait()
-		})
+					*/
+                }(i)
+            }
+
+            b.ResetTimer()
+            start.Done() // release all workers simultaneously
+            done.Wait()
+        })
 
 		// Sharded store benchmark at this concurrency level
-		b.Run(fmt.Sprintf("Sharded/goroutines-%d", n), func(b *testing.B) {
-			s := New()
+        b.Run(fmt.Sprintf("Sharded/goroutines-%d", n), func(b *testing.B) {
+            s := New()
+            for _, k := range benchKeys {
+                s.Set(k, []byte("value"))
+            }
 
-			// Pre-populate
-			for _, k := range benchKeys {
-				s.Set(k, []byte("value"))
-			}
+            var start sync.WaitGroup
+            var done sync.WaitGroup
+            start.Add(1)
 
-			var wg sync.WaitGroup
-			opsPerGoroutine := b.N / n
-			if opsPerGoroutine < 1 {
-				opsPerGoroutine = 1
-			}
+            for i := 0; i < n; i++ {
+                done.Add(1)
+                go func(workerID int) {
+                    defer done.Done()
+                    start.Wait()
 
-			b.ResetTimer()
-
-			for i := 0; i < n; i++ {
-				wg.Add(1)
-				go func(id int) {
-					defer wg.Done()
-					for j := 0; j < opsPerGoroutine; j++ {
+                    startIdx := workerID * b.N / n
+                    endIdx := (workerID + 1) * b.N / n
+					// 90% reads
+					for j := startIdx; j < endIdx; j++ {
+                        key := benchKeys[j%1000]
+                        if j%10 == 0 {
+                            s.Set(key, []byte("value"))
+                        } else {
+                            s.Get(key)
+                        }
+                    }
+					/* 
+					// 100% writes
+					for j := startIdx; j < endIdx; j++ {
 						key := benchKeys[j%1000]
-						if j%10 == 0 {
-							s.Set(key, []byte("value"))
-						} else {
-							s.Get(key)
-						}
+						s.Set(key, []byte("value")) // 100% writes
 					}
-				}(i)
-			}
-			wg.Wait()
-		})
-	}
+					*/
+                }(i)
+            }
+
+            b.ResetTimer()
+            start.Done()
+            done.Wait()
+        })
+    }
 }
 
 // Helper, suppress unused import warning
