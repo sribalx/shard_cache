@@ -193,13 +193,13 @@ BenchmarkComparison/Sharded/goroutines-1000-64   24.37 ns/op    ~14.1x faster
 3. **Cache Line False Sharing Prevention:** I incorporated a `[128]byte` padding buffer for each `shard` struct. This ensures adjacent shard mutexes do not reside on the same 64-byte/128-byte cache line granule, preventing cross-core invalidation storms between concurrent writer goroutines. Learnt this after realising my tests were a bottlenecked.
 
 ---
-
+<!--
 ## What I Learned
 
 **TO DO**
 
 ---
-
+--!>
 ## File Structure
 
 ```
