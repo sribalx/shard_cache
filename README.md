@@ -190,7 +190,7 @@ BenchmarkComparison/Sharded/goroutines-1000-64   24.37 ns/op    ~14.1x faster
 
 1. **Lock Contention Scales with Physical Bus Width:** On 4 cores, single-mutex baseline latency degrades to **~130 ns/op**. On 64 cores, the cache-invalidation traffic across the mech interconnect forces baseline latency up to **~353 ns/op**, a ~2.7x penalty on the mutex serial path alone.
 2. **Horizontal Saturation Validates Sharding:** Despite Graviton's individual cores having ~2.4x slower single-thread execution latency than the Apple M1 Pro (69.56 ns vs 28.61 ns on 1 goroutine), 64 independent shards absorbed 64 concurrent hardware writers down to ~20 ns/op. Distributing lock contention across 64 partitions widened the relative speedup over the single-mutex baseline from 7.2x (local) to 16.9x (cloud).
-3. **Cache Line False Sharing Prevention:** I incorporated a `[128]byte` padding buffer for each `shard` struct. This ensures adjacent shard mutexes do not reside on the same 64-byte/128-byte cache line granule, preventing cross-core invalidation storms between concurrent writer goroutines. Learnt this after realising my tests were a bottlenecked.
+3. **Cache Line False Sharing Prevention:** I incorporated a `[128]byte` padding buffer for each `shard` struct. This ensures adjacent shard mutexes do not reside on the same 64-byte/128-byte cache line granule, preventing cross-core invalidation storms between concurrent writer goroutines. Learnt this after realising my tests were bottlenecked.
 
 ---
 <!--
