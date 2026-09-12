@@ -240,6 +240,6 @@ BenchmarkComparison/Sharded/goroutines-1000-64   24.37 ns/op    ~14.1x faster
 
 ## What I'd Do Differently
 
-If I were building a production cache, I'd probably start single-threaded like Redis and only add threading for network I/O if profiling showed it was needed. Sharding the KV layer was a great learning exercise, but the insight is that it solves a problem that doesn't dominate in this workload.
+I believe I got what I wanted out of this project. Now if I were building a production cache, I'd probably start single-threaded like Redis and only add threading for network I/O if profiling showed it was needed. Sharding the KV layer was good for learning, but the fact is that caching is more likely to be network and memory bound than CPU bound.
 
-Also, I'd add TTL support. A cache without expiration is just a memory leak with extra steps.
+Also, I'd add TTL support. A cache without expiration is just a memory leak with extra steps lol.
